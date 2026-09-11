@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: searxng-service
+    env: docker
+    plan: free
+    dockerfilePath: Dockerfile
