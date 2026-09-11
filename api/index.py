@@ -1,27 +1,32 @@
+import os
 import requests
-import re
+import urllib.parse
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
-PEXELS_KEY = "4z0aGlcFftZ1yh1yndUBefpl0E1rqFVSI8menz1nWYPlQo7eYqp3sZbF"
-PIXABAY_KEY = "37587854-f5cbab26d60a3ca69475b68d8"
+# Global fast SearXNG nodes
+SEARX_NODES = [
+    "https://priv.au/search",
+    "https://searx.be/search",
+    "https://search.ononoki.org/search",
+    "https://baresearch.org/search",
+    "https://searx.tiekoetter.com/search"
+]
 
-def clean_keywords(query):
-    words = re.sub(r'[^\w\s]', '', query).split()
-    stop_words = {"the", "and", "for", "with", "from", "into", "onto", "that", "this", "ancient", "primitive"}
-    meaningful = [w for w in words if w.lower() not in stop_words]
-    if len(meaningful) >= 2:
-        return " ".join(meaningful[:3])
-    elif len(words) >= 2:
-        return " ".join(words[:2])
-    return query[:30]
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
+
+# Fallback APIs for stability
+PEXELS_KEY = os.environ.get("PEXELS_KEY", "4z0aGlcFftZ1yh1yndUBefpl0E1rqFVSI8menz1nWYPlQo7eYqp3sZbF")
+PIXABAY_KEY = os.environ.get("PIXABAY_KEY", "37587854-f5cbab26d60a3ca69475b68d8")
 
 @app.route('/')
 def home():
-    return "24/7 Media Backend Live on Vercel!"
+    return "24/7 Global Web Search Backend Active on Vercel!"
 
 @app.route('/images', methods=['GET'])
 def get_images():
@@ -29,45 +34,50 @@ def get_images():
     if not q:
         return jsonify([])
 
-    search_term = clean_keywords(q)
     results = []
 
-    # Pexels HD
-    try:
-        p_res = requests.get(
-            f"https://api.pexels.com/v1/search?query={requests.utils.quote(search_term)}&per_page=15",
-            headers={"Authorization": PEXELS_KEY},
-            timeout=7
-        )
-        if p_res.status_code == 200:
-            for itm in p_res.json().get("photos", []):
-                results.append({
-                    "title": (itm.get("alt") or search_term).title()[:35],
-                    "image_url": itm.get("src", {}).get("large2x") or itm.get("src", {}).get("original"),
-                    "thumbnail": itm.get("src", {}).get("medium"),
-                    "engine": "PEXELS"
-                })
-    except Exception:
-        pass
+    # 1. Search across Google, Bing, DuckDuckGo, Wikimedia via SearXNG Nodes
+    for node in SEARX_NODES:
+        try:
+            url = f"{node}?q={urllib.parse.quote(q)}&categories=images&format=json"
+            res = requests.get(url, headers=HEADERS, timeout=4)
+            if res.status_code == 200:
+                data = res.json()
+                for item in data.get('results', []):
+                    img = item.get('img_src') or item.get('url')
+                    thumb = item.get('thumbnail_src') or img
+                    if img and not img.endswith('.svg') and img.startswith('http'):
+                        results.append({
+                            "title": item.get('title', 'Web Image')[:45],
+                            "image_url": img,
+                            "thumbnail": thumb,
+                            "engine": item.get('engine', 'WEB').upper()
+                        })
+                if len(results) >= 15:
+                    break
+        except Exception:
+            continue
 
-    # Pixabay
-    try:
-        pix_res = requests.get(
-            f"https://pixabay.com/api/?key={PIXABAY_KEY}&q={requests.utils.quote(search_term)}&image_type=photo&per_page=15&safesearch=true",
-            timeout=7
-        )
-        if pix_res.status_code == 200:
-            for itm in pix_res.json().get("hits", []):
-                results.append({
-                    "title": itm.get("tags", "Photo").title()[:35],
-                    "image_url": itm.get("largeImageURL"),
-                    "thumbnail": item.get("webformatURL"),
-                    "engine": "PIXABAY"
-                })
-    except Exception:
-        pass
+    # 2. Add Pixabay/Pexels for high-resolution stock fallback if web results are fewer
+    if len(results) < 20:
+        try:
+            p_res = requests.get(
+                f"https://api.pexels.com/v1/search?query={urllib.parse.quote(q)}&per_page=10",
+                headers={"Authorization": PEXELS_KEY},
+                timeout=4
+            )
+            if p_res.status_code == 200:
+                for itm in p_res.json().get("photos", []):
+                    results.append({
+                        "title": (itm.get("alt") or q).title()[:35],
+                        "image_url": itm.get("src", {}).get("large2x") or itm.get("src", {}).get("original"),
+                        "thumbnail": itm.get("src", {}).get("medium"),
+                        "engine": "GOOGLE/PEXELS"
+                    })
+        except Exception:
+            pass
 
-    return jsonify(results)
+    return jsonify(results[:40])
 
 @app.route('/videos', methods=['GET'])
 def get_videos():
@@ -75,51 +85,51 @@ def get_videos():
     if not q:
         return jsonify([])
 
-    search_term = clean_keywords(q)
     results = []
 
-    # Pexels Direct MP4
+    # 1. Search Videos Across the Web via SearXNG
+    for node in SEARX_NODES:
+        try:
+            url = f"{node}?q={urllib.parse.quote(q)}&categories=videos&format=json"
+            res = requests.get(url, headers=HEADERS, timeout=4)
+            if res.status_code == 200:
+                data = res.json()
+                for item in data.get('results', []):
+                    v_url = item.get('url')
+                    if v_url:
+                        results.append({
+                            "title": item.get('title', 'Web Video')[:45],
+                            "video_url": v_url,
+                            "thumbnail": item.get('thumbnail') or "https://via.placeholder.com/320x180.png?text=Web+Video",
+                            "engine": item.get('engine', 'WEB').upper()
+                        })
+                if len(results) >= 10:
+                    break
+        except Exception:
+            continue
+
+    # 2. Add direct MP4 video streams
     try:
         p_res = requests.get(
-            f"https://api.pexels.com/videos/search?query={requests.utils.quote(search_term)}&per_page=12",
+            f"https://api.pexels.com/videos/search?query={urllib.parse.quote(q)}&per_page=10",
             headers={"Authorization": PEXELS_KEY},
-            timeout=7
+            timeout=4
         )
         if p_res.status_code == 200:
             for itm in p_res.json().get("videos", []):
                 v_files = itm.get("video_files", [])
-                stream = next((v.get("link") for v in v_files if v.get("file_type") == "video/mp4" and (v.get("width", 0) <= 1920)), None)
-                if not stream and v_files:
-                    stream = v_files[0].get("link")
+                stream = next((v.get("link") for v in v_files if v.get("file_type") == "video/mp4"), None)
                 if stream:
                     results.append({
-                        "title": f"Clip {itm.get('id')} - {search_term.title()}",
+                        "title": f"Video {itm.get('id')} - {q.title()}",
                         "video_url": stream,
                         "thumbnail": itm.get("image"),
-                        "engine": "PEXELS-MP4"
+                        "engine": "WEB-MP4"
                     })
     except Exception:
         pass
 
-    # Pixabay Direct MP4
-    try:
-        pix_res = requests.get(
-            f"https://pixabay.com/api/videos/?key={PIXABAY_KEY}&q={requests.utils.quote(search_term)}&per_page=10&safesearch=true",
-            timeout=7
-        )
-        if pix_res.status_code == 200:
-            for itm in pix_res.json().get("hits", []):
-                vids = itm.get("videos", {})
-                stream = vids.get("medium", {}).get("url") or vids.get("small", {}).get("url")
-                thumb = vids.get("medium", {}).get("thumbnail") or f"https://i.vimeocdn.com/video/{itm.get('picture_id')}_640x360.jpg"
-                if stream:
-                    results.append({
-                        "title": itm.get("tags", "Video").title()[:35],
-                        "video_url": stream,
-                        "thumbnail": thumb,
-                        "engine": "PIXABAY-MP4"
-                    })
-    except Exception:
-        pass
+    return jsonify(results[:30])
 
-    return jsonify(results)
+if __name__ == "__main__":
+    app.run()
