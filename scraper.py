@@ -8,7 +8,8 @@ KEYWORDS = [
 ]
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    "User-Agent": "MediaScraperBot/2.0 (https://github.com/mhassan0622; contact@example.com)",
+    "Accept": "application/json"
 }
 
 all_data = {
@@ -16,18 +17,17 @@ all_data = {
     "videos": []
 }
 
-print("Starting Robust Web Scraper...")
+print("Starting Scraper (Images & MP4 Web Videos)...")
 
 for kw in KEYWORDS:
-    print(f"Fetching data for: {kw}")
+    print(f"Scraping category: {kw}")
 
-    # 1. OPENVERSE GLOBAL WEB SEARCH (Indexed images across the web)
+    # 1. IMAGES (Openverse & Flickr Global Web Index)
     try:
         ov_url = f"https://api.openverse.org/v1/images/?q={urllib.parse.quote(kw)}&page_size=20"
         res = requests.get(ov_url, headers=HEADERS, timeout=10)
         if res.status_code == 200:
-            results = res.json().get('results', [])
-            for item in results:
+            for item in res.json().get('results', []):
                 img_url = item.get('url')
                 thumb = item.get('thumbnail') or img_url
                 if img_url and img_url.startswith('http'):
@@ -36,55 +36,62 @@ for kw in KEYWORDS:
                         "title": (item.get('title') or kw)[:45],
                         "image_url": img_url,
                         "thumbnail": thumb,
-                        "engine": f"WEB-{item.get('provider', 'OPEN').upper()}"
+                        "engine": f"WEB-{item.get('provider', 'FLICKR').upper()}"
                     })
     except Exception as e:
-        print(f"Openverse error for {kw}: {e}")
+        print(f"Openverse image error ({kw}): {e}")
 
-    # 2. WIKIMEDIA COMMONS IMAGES (Fallback & High-res)
+    # 2. VIDEOS: INTERNET ARCHIVE (archive.org - Direct Free Web MP4s)
     try:
-        wiki_img_url = f"https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrsearch={urllib.parse.quote(kw)}&gsrnamespace=6&gsrlimit=10&prop=imageinfo&iiprop=url|thumburl&iiurlwidth=400"
-        w_res = requests.get(wiki_img_url, headers=HEADERS, timeout=10)
+        ia_url = (
+            f"https://archive.org/advancedsearch.php?q={urllib.parse.quote(kw)}+AND+mediatype:movies"
+            f"&fl[]=identifier,title&sort[]=downloads+desc&rows=5&page=1&output=json"
+        )
+        ia_res = requests.get(ia_url, headers=HEADERS, timeout=10)
+        if ia_res.status_code == 200:
+            docs = ia_res.json().get('response', {}).get('docs', [])
+            for doc in docs:
+                ident = doc.get('identifier')
+                title = doc.get('title') or kw
+                if ident:
+                    all_data["videos"].append({
+                        "keyword": kw,
+                        "title": title[:45],
+                        "video_url": f"https://archive.org/download/{ident}/{ident}.mp4",
+                        "thumbnail": f"https://archive.org/services/img/{ident}",
+                        "engine": "INTERNET-ARCHIVE"
+                    })
+    except Exception as e:
+        print(f"Internet Archive video error ({kw}): {e}")
+
+    # 3. VIDEOS: WIKIMEDIA COMMONS (webm/mp4 open media)
+    try:
+        wiki_url = (
+            f"https://commons.wikimedia.org/w/api.php?action=query&format=json"
+            f"&generator=search&gsrsearch={urllib.parse.quote(kw)}+filetype:bitmap"
+            f"&gsrnamespace=6&gsrlimit=5&prop=imageinfo&iiprop=url|mime|thumburl&iiurlwidth=400"
+        )
+        w_res = requests.get(wiki_url, headers=HEADERS, timeout=10)
         if w_res.status_code == 200:
             pages = w_res.json().get('query', {}).get('pages', {})
             for pid, info in pages.items():
-                imageinfo = info.get('imageinfo', [{}])[0]
-                orig_url = imageinfo.get('url')
-                thumb_url = imageinfo.get('thumburl')
-                if orig_url and not orig_url.endswith(('.svg', '.pdf', '.ogg', '.webm')):
-                    all_data["images"].append({
-                        "keyword": kw,
-                        "title": info.get('title', kw).replace('File:', '')[:45],
-                        "image_url": orig_url,
-                        "thumbnail": thumb_url or orig_url,
-                        "engine": "WIKIMEDIA-WEB"
-                    })
-    except Exception as e:
-        print(f"Wiki image error for {kw}: {e}")
-
-    # 3. WIKIMEDIA COMMONS & ARCHIVE DIRECT VIDEOS
-    try:
-        wiki_vid_url = f"https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrsearch={urllib.parse.quote(kw)}+filetype:video&gsrlimit=8&prop=imageinfo&iiprop=url|thumburl&iiurlwidth=400"
-        v_res = requests.get(wiki_vid_url, headers=HEADERS, timeout=10)
-        if v_res.status_code == 200:
-            pages = v_res.json().get('query', {}).get('pages', {})
-            for pid, info in pages.items():
-                imageinfo = info.get('imageinfo', [{}])[0]
-                vid_url = imageinfo.get('url')
-                thumb_url = imageinfo.get('thumburl')
-                if vid_url:
+                imginfo = info.get('imageinfo', [{}])[0]
+                mime = imginfo.get('mime', '')
+                vid_url = imginfo.get('url')
+                thumb = imginfo.get('thumburl')
+                if ('video' in mime or 'webm' in mime or 'ogg' in mime) and vid_url:
                     all_data["videos"].append({
                         "keyword": kw,
                         "title": info.get('title', 'Web Video').replace('File:', '')[:45],
                         "video_url": vid_url,
-                        "thumbnail": thumb_url or "https://via.placeholder.com/320x180.png?text=Open+Video",
-                        "engine": "OPEN-WEB-VIDEO"
+                        "thumbnail": thumb or "https://via.placeholder.com/320x180.png?text=Open+Video",
+                        "engine": "WIKIMEDIA-OPEN"
                     })
     except Exception as e:
-        print(f"Video error for {kw}: {e}")
+        print(f"Wikimedia video error ({kw}): {e}")
 
-# Write results
+# Save the unified dataset
 with open("data.json", "w", encoding="utf-8") as f:
     json.dump(all_data, f, indent=2)
 
-print(f"Finished! Gathered {len(all_data['images'])} images and {len(all_data['videos'])} videos.")
+print(f"Extraction finished! Images: {len(all_data['images'])}, Videos: {len(all_data['videos'])}")
