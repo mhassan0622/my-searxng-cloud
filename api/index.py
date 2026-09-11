@@ -1,32 +1,22 @@
-import os
-import requests
+import json
+import re
 import urllib.parse
+import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# Global fast SearXNG nodes
-SEARX_NODES = [
-    "https://priv.au/search",
-    "https://searx.be/search",
-    "https://search.ononoki.org/search",
-    "https://baresearch.org/search",
-    "https://searx.tiekoetter.com/search"
-]
-
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5"
 }
-
-# Fallback APIs for stability
-PEXELS_KEY = os.environ.get("PEXELS_KEY", "4z0aGlcFftZ1yh1yndUBefpl0E1rqFVSI8menz1nWYPlQo7eYqp3sZbF")
-PIXABAY_KEY = os.environ.get("PIXABAY_KEY", "37587854-f5cbab26d60a3ca69475b68d8")
 
 @app.route('/')
 def home():
-    return "24/7 Global Web Search Backend Active on Vercel!"
+    return "24/7 Pure Open Web Engine Active"
 
 @app.route('/images', methods=['GET'])
 def get_images():
@@ -36,47 +26,45 @@ def get_images():
 
     results = []
 
-    # 1. Search across Google, Bing, DuckDuckGo, Wikimedia via SearXNG Nodes
-    for node in SEARX_NODES:
-        try:
-            url = f"{node}?q={urllib.parse.quote(q)}&categories=images&format=json"
-            res = requests.get(url, headers=HEADERS, timeout=4)
-            if res.status_code == 200:
-                data = res.json()
-                for item in data.get('results', []):
-                    img = item.get('img_src') or item.get('url')
-                    thumb = item.get('thumbnail_src') or img
-                    if img and not img.endswith('.svg') and img.startswith('http'):
-                        results.append({
-                            "title": item.get('title', 'Web Image')[:45],
-                            "image_url": img,
-                            "thumbnail": thumb,
-                            "engine": item.get('engine', 'WEB').upper()
-                        })
-                if len(results) >= 15:
-                    break
-        except Exception:
-            continue
-
-    # 2. Add Pixabay/Pexels for high-resolution stock fallback if web results are fewer
-    if len(results) < 20:
-        try:
-            p_res = requests.get(
-                f"https://api.pexels.com/v1/search?query={urllib.parse.quote(q)}&per_page=10",
-                headers={"Authorization": PEXELS_KEY},
-                timeout=4
-            )
-            if p_res.status_code == 200:
-                for itm in p_res.json().get("photos", []):
+    # 1. QWANT / DUCKDUCKGO WEB IMAGES
+    try:
+        qwant_url = f"https://api.qwant.com/v3/search/images?q={urllib.parse.quote(q)}&count=25&locale=en_US&offset=0"
+        res = requests.get(qwant_url, headers=HEADERS, timeout=6)
+        if res.status_code == 200:
+            data = res.json().get('data', {}).get('result', {}).get('data', [])
+            for item in data:
+                img_url = item.get('media')
+                thumb = item.get('thumbnail') or img_url
+                title = item.get('title') or q
+                if img_url and img_url.startswith('http'):
                     results.append({
-                        "title": (itm.get("alt") or q).title()[:35],
-                        "image_url": itm.get("src", {}).get("large2x") or itm.get("src", {}).get("original"),
-                        "thumbnail": itm.get("src", {}).get("medium"),
-                        "engine": "GOOGLE/PEXELS"
+                        "title": title[:50],
+                        "image_url": img_url,
+                        "thumbnail": thumb,
+                        "engine": "QWANT-WEB"
                     })
-        except Exception:
-            pass
+    except Exception:
+        pass
 
+    # 2. OPENVERSE (Global Web Index: Flickr, Wikimedia, Blogs, Public Archives)
+    try:
+        ov_url = f"https://api.openverse.org/v1/images/?q={urllib.parse.quote(q)}&page_size=25"
+        res = requests.get(ov_url, headers=HEADERS, timeout=6)
+        if res.status_code == 200:
+            for item in res.json().get('results', []):
+                img_url = item.get('url')
+                thumb = item.get('thumbnail') or img_url
+                if img_url and img_url.startswith('http'):
+                    results.append({
+                        "title": (item.get('title') or q)[:50],
+                        "image_url": img_url,
+                        "thumbnail": thumb,
+                        "engine": f"WEB-{item.get('provider', 'INDEX').upper()}"
+                    })
+    except Exception:
+        pass
+
+    # Verification ke liye response return karein
     return jsonify(results[:40])
 
 @app.route('/videos', methods=['GET'])
@@ -87,49 +75,26 @@ def get_videos():
 
     results = []
 
-    # 1. Search Videos Across the Web via SearXNG
-    for node in SEARX_NODES:
-        try:
-            url = f"{node}?q={urllib.parse.quote(q)}&categories=videos&format=json"
-            res = requests.get(url, headers=HEADERS, timeout=4)
-            if res.status_code == 200:
-                data = res.json()
-                for item in data.get('results', []):
-                    v_url = item.get('url')
-                    if v_url:
-                        results.append({
-                            "title": item.get('title', 'Web Video')[:45],
-                            "video_url": v_url,
-                            "thumbnail": item.get('thumbnail') or "https://via.placeholder.com/320x180.png?text=Web+Video",
-                            "engine": item.get('engine', 'WEB').upper()
-                        })
-                if len(results) >= 10:
-                    break
-        except Exception:
-            continue
-
-    # 2. Add direct MP4 video streams
+    # INTERNET ARCHIVE (Real Web Direct MP4s)
     try:
-        p_res = requests.get(
-            f"https://api.pexels.com/videos/search?query={urllib.parse.quote(q)}&per_page=10",
-            headers={"Authorization": PEXELS_KEY},
-            timeout=4
+        ia_url = (
+            f"https://archive.org/advancedsearch.php?q={urllib.parse.quote(q)}+AND+mediatype:movies"
+            f"&fl[]=identifier,title&sort[]=downloads+desc&rows=15&page=1&output=json"
         )
-        if p_res.status_code == 200:
-            for itm in p_res.json().get("videos", []):
-                v_files = itm.get("video_files", [])
-                stream = next((v.get("link") for v in v_files if v.get("file_type") == "video/mp4"), None)
-                if stream:
+        ia_res = requests.get(ia_url, headers=HEADERS, timeout=6)
+        if ia_res.status_code == 200:
+            docs = ia_res.json().get('response', {}).get('docs', [])
+            for doc in docs:
+                ident = doc.get('identifier')
+                title = doc.get('title') or q
+                if ident:
                     results.append({
-                        "title": f"Video {itm.get('id')} - {q.title()}",
-                        "video_url": stream,
-                        "thumbnail": itm.get("image"),
-                        "engine": "WEB-MP4"
+                        "title": title[:50],
+                        "video_url": f"https://archive.org/download/{ident}/{ident}.mp4",
+                        "thumbnail": f"https://archive.org/services/img/{ident}",
+                        "engine": "INTERNET-ARCHIVE"
                     })
     except Exception:
         pass
 
-    return jsonify(results[:30])
-
-if __name__ == "__main__":
-    app.run()
+    return jsonify(results[:25])
