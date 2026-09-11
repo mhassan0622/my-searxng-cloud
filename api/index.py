@@ -10,13 +10,13 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5"
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9"
 }
 
 @app.route('/')
 def home():
-    return "24/7 Pure Open Web Engine Active"
+    return "All-Internet Web Search Engine Active!"
 
 @app.route('/images', methods=['GET'])
 def get_images():
@@ -26,45 +26,49 @@ def get_images():
 
     results = []
 
-    # 1. QWANT / DUCKDUCKGO WEB IMAGES
+    # 1. OPENVERSE GLOBAL WEB (Millions of web images: Flickr, Wikimedia, WordPress blogs, Digital Archives)
     try:
-        qwant_url = f"https://api.qwant.com/v3/search/images?q={urllib.parse.quote(q)}&count=25&locale=en_US&offset=0"
-        res = requests.get(qwant_url, headers=HEADERS, timeout=6)
-        if res.status_code == 200:
-            data = res.json().get('data', {}).get('result', {}).get('data', [])
-            for item in data:
-                img_url = item.get('media')
-                thumb = item.get('thumbnail') or img_url
-                title = item.get('title') or q
-                if img_url and img_url.startswith('http'):
-                    results.append({
-                        "title": title[:50],
-                        "image_url": img_url,
-                        "thumbnail": thumb,
-                        "engine": "QWANT-WEB"
-                    })
-    except Exception:
-        pass
-
-    # 2. OPENVERSE (Global Web Index: Flickr, Wikimedia, Blogs, Public Archives)
-    try:
-        ov_url = f"https://api.openverse.org/v1/images/?q={urllib.parse.quote(q)}&page_size=25"
-        res = requests.get(ov_url, headers=HEADERS, timeout=6)
-        if res.status_code == 200:
-            for item in res.json().get('results', []):
+        ov_url = f"https://api.openverse.org/v1/images/?q={urllib.parse.quote(q)}&page_size=30"
+        ov_res = requests.get(ov_url, headers=HEADERS, timeout=6)
+        if ov_res.status_code == 200:
+            for item in ov_res.json().get('results', []):
                 img_url = item.get('url')
                 thumb = item.get('thumbnail') or img_url
+                provider = item.get('provider', 'WEB').upper()
                 if img_url and img_url.startswith('http'):
                     results.append({
                         "title": (item.get('title') or q)[:50],
                         "image_url": img_url,
                         "thumbnail": thumb,
-                        "engine": f"WEB-{item.get('provider', 'INDEX').upper()}"
+                        "engine": f"WEB-{provider}"
                     })
     except Exception:
         pass
 
-    # Verification ke liye response return karein
+    # 2. WIKIMEDIA GLOBAL WEB COMMONS (Original web photography & high-res)
+    try:
+        wiki_url = (
+            f"https://commons.wikimedia.org/w/api.php?action=query&format=json"
+            f"&generator=search&gsrsearch={urllib.parse.quote(q)}&gsrnamespace=6&gsrlimit=15"
+            f"&prop=imageinfo&iiprop=url|thumburl&iiurlwidth=400"
+        )
+        w_res = requests.get(wiki_url, headers=HEADERS, timeout=6)
+        if w_res.status_code == 200:
+            pages = w_res.json().get('query', {}).get('pages', {})
+            for pid, info in pages.items():
+                imginfo = info.get('imageinfo', [{}])[0]
+                orig_url = imginfo.get('url')
+                thumb_url = imginfo.get('thumburl')
+                if orig_url and not orig_url.endswith(('.svg', '.pdf', '.ogg', '.webm')):
+                    results.append({
+                        "title": info.get('title', q).replace('File:', '')[:50],
+                        "image_url": orig_url,
+                        "thumbnail": thumb_url or orig_url,
+                        "engine": "WIKIMEDIA-WEB"
+                    })
+    except Exception:
+        pass
+
     return jsonify(results[:40])
 
 @app.route('/videos', methods=['GET'])
@@ -75,7 +79,7 @@ def get_videos():
 
     results = []
 
-    # INTERNET ARCHIVE (Real Web Direct MP4s)
+    # INTERNET ARCHIVE (Real Open Web MP4 Videos)
     try:
         ia_url = (
             f"https://archive.org/advancedsearch.php?q={urllib.parse.quote(q)}+AND+mediatype:movies"
