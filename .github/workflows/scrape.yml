@@ -1,0 +1,38 @@
+name: Auto Web Data Scraper
+
+on:
+  schedule:
+    # Har ghante background me auto-run hoga
+    - cron: '0 * * * *'
+  workflow_dispatch: # Actions tab se button daba kar manual chalane ke liye
+
+jobs:
+  scrape-web:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Libraries
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Run Web Scraper
+        run: python scraper.py
+
+      - name: Save and Push data.json to Repo
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add data.json
+          git commit -m "Updated web media catalog [skip ci]" || exit 0
+          git push
