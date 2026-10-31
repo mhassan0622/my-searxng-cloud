@@ -245,41 +245,6 @@
       "video_url": "https://archive.org/download/nazi_concentration_camps/nazi_concentration_camps.mp4",
       "thumbnail": "https://archive.org/services/img/nazi_concentration_camps",
       "engine": "INTERNET-ARCHIVE"
-    },
-    {
-      "keyword": "ocean",
-      "title": "Deus Ex (PC) - 1:29:02 - Nick Alward",
-      "video_url": "https://archive.org/download/DeusEx_12902/DeusEx_12902.mp4",
-      "thumbnail": "https://archive.org/services/img/DeusEx_12902",
-      "engine": "INTERNET-ARCHIVE"
-    },
-    {
-      "keyword": "ocean",
-      "title": "Chrono Trigger (SNES) - 4:56 - David Gibbons",
-      "video_url": "https://archive.org/download/ChronoTrigger_456/ChronoTrigger_456.mp4",
-      "thumbnail": "https://archive.org/services/img/ChronoTrigger_456",
-      "engine": "INTERNET-ARCHIVE"
-    },
-    {
-      "keyword": "ocean",
-      "title": "Unus Annus",
-      "video_url": "https://archive.org/download/unus-annus/unus-annus.mp4",
-      "thumbnail": "https://archive.org/services/img/unus-annus",
-      "engine": "INTERNET-ARCHIVE"
-    },
-    {
-      "keyword": "ocean",
-      "title": "Star Ocean: Till the End of Time (PS2) - 4:11",
-      "video_url": "https://archive.org/download/StarOcean3_411/StarOcean3_411.mp4",
-      "thumbnail": "https://archive.org/services/img/StarOcean3_411",
-      "engine": "INTERNET-ARCHIVE"
-    },
-    {
-      "keyword": "ocean",
-      "title": "Voyage to the Planet of Prehistoric Women",
-      "video_url": "https://archive.org/download/VoyagetothePlanetofPrehistoricWomen/VoyagetothePlanetofPrehistoricWomen.mp4",
-      "thumbnail": "https://archive.org/services/img/VoyagetothePlanetofPrehistoricWomen",
-      "engine": "INTERNET-ARCHIVE"
     }
   ]
 }
